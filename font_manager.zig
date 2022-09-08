@@ -14,6 +14,11 @@ pub const Config = struct {
     max_pages: u32 = 64,
 };
 
+/// A manager for fonts and glyphs which can manage the creation and usage of
+/// atlas textures. It takes paths to font files (TTF etc) to "register", and
+/// then will create and dynamically update font atlas textures (each of which
+/// is called a "page") as glyphs are rendered via the glyphIterator function
+/// which takes a UTF-8 encoded string as input.
 pub fn FontManager(comptime TextureContext: type) type {
     return struct {
         const Self = @This();
@@ -534,4 +539,8 @@ pub fn FontManager(comptime TextureContext: type) type {
             };
         }
     };
+}
+
+pub fn fontManager(allocator: std.mem.Allocator, texture_context: anytype, config: Config) !FontManager(@TypeOf(texture_context)) {
+    return FontManager(@TypeOf(texture_context)).init(allocator, texture_context, config);
 }
