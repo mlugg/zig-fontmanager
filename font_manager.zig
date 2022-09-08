@@ -3,7 +3,15 @@ const freetype = @import("freetype");
 const harfbuzz = @import("harfbuzz");
 
 pub const Config = struct {
+    /// The width and height of each font page texture.
     page_size: u32 = 512,
+
+    /// The maximum number of font page textures that should exist at any time.
+    /// After this many pages are filled, all pages are cleared for re-use after
+    /// the iterator is deinited. Note that a single glyphIterator call may
+    /// itself create arbitrarily many pages, so this value should not be
+    /// assumed as a hard limit.
+    max_pages: u32 = 64,
 };
 
 pub fn FontManager(comptime TextureContext: type) type {
@@ -233,6 +241,7 @@ pub fn FontManager(comptime TextureContext: type) type {
         pub fn deinit(self: *Self) void {
             for (self.font_pages.items) |*font_page, i| {
                 self.texture_context.destroyTexture(@intCast(u32, i));
+                self.allocator.free(font_page.tex_data);
                 font_page.arena.deinit();
             }
             self.font_pages.deinit(self.allocator);
@@ -301,7 +310,8 @@ pub fn FontManager(comptime TextureContext: type) type {
             };
             errdefer page.arena.deinit();
 
-            page.tex_data = try page.arena.allocator().alloc(u8, page_width * page_height * 4);
+            page.tex_data = try self.allocator.alloc(u8, page_width * page_height * 4);
+            errdefer self.allocator.free(page.tex_data);
 
             // initialize the texture to transparent white to prevent blending issues
             {
@@ -400,6 +410,39 @@ pub fn FontManager(comptime TextureContext: type) type {
             return glyph.value_ptr.*;
         }
 
+        fn checkClearPages(self: *Self) void {
+            if (self.font_pages.items.len < self.config.max_pages) {
+                return;
+            }
+
+            for (self.font_pages.items[1..]) |*font_page, i| {
+                self.texture_context.destroyTexture(@intCast(u32, i + 1));
+                self.allocator.free(font_page.tex_data);
+                font_page.arena.deinit();
+            }
+
+            // keep one page around since we'll need it soon
+
+            self.font_pages.shrinkRetainingCapacity(1);
+
+            const page = &self.font_pages.items[0];
+            page.arena.deinit();
+            page.arena = std.heap.ArenaAllocator.init(self.allocator);
+            page.tree = .free;
+
+            var y: u32 = 0;
+            while (y < page.height) : (y += 1) {
+                var x: u32 = 0;
+                while (x < page.width) : (x += 1) {
+                    const i = y * page.width + x;
+                    page.tex_data[i * 4 + 0] = 255;
+                    page.tex_data[i * 4 + 1] = 255;
+                    page.tex_data[i * 4 + 2] = 255;
+                    page.tex_data[i * 4 + 3] = 0;
+                }
+            }
+        }
+
         pub const GlyphRenderInfo = struct {
             render: struct {
                 texture: RenderTexture,
@@ -430,6 +473,7 @@ pub fn FontManager(comptime TextureContext: type) type {
 
             pub fn deinit(self: *GlyphIterator) void {
                 self.buf.deinit();
+                self.manager.checkClearPages();
             }
 
             pub fn next(self: *GlyphIterator) !?GlyphRenderInfo {
