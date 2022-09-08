@@ -2,6 +2,10 @@ const std = @import("std");
 const freetype = @import("freetype");
 const harfbuzz = @import("harfbuzz");
 
+pub const Config = struct {
+    page_size: u32 = 512,
+};
+
 pub fn FontManager(comptime TextureContext: type) type {
     return struct {
         const Self = @This();
@@ -13,6 +17,7 @@ pub fn FontManager(comptime TextureContext: type) type {
 
         allocator: std.mem.Allocator,
         texture_context: TextureContext,
+        config: Config,
 
         ft_lib: freetype.Library,
         font_faces: std.StringArrayHashMapUnmanaged(FontFace),
@@ -55,8 +60,6 @@ pub fn FontManager(comptime TextureContext: type) type {
             tex_data: []u8, // width*height*4 (BGRA)
             tree: BspNode,
             arena: std.heap.ArenaAllocator,
-
-            const page_size = 512; // default width and height of a font page
 
             const BspNode = union(enum) {
                 free,
@@ -213,13 +216,14 @@ pub fn FontManager(comptime TextureContext: type) type {
             }
         };
 
-        pub fn init(allocator: std.mem.Allocator, texture_context: TextureContext) !Self {
+        pub fn init(allocator: std.mem.Allocator, texture_context: TextureContext, config: Config) !Self {
             const ft_lib = try freetype.Library.init();
             errdefer ft_lib.deinit();
 
             return Self{
                 .allocator = allocator,
                 .texture_context = texture_context,
+                .config = config,
                 .ft_lib = ft_lib,
                 .font_faces = .{},
                 .font_pages = .{},
@@ -283,8 +287,8 @@ pub fn FontManager(comptime TextureContext: type) type {
 
             // can't fit the glyph, allocate a new page
 
-            const page_width: u32 = FontPage.page_size;
-            const page_height: u32 = FontPage.page_size;
+            const page_width: u32 = self.config.page_size;
+            const page_height: u32 = self.config.page_size;
 
             if (width > page_width or height > page_height) return error.GlyphTooLarge;
 
