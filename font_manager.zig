@@ -18,7 +18,7 @@ pub fn FontManager(comptime TextureContext: type) type {
         font_faces: std.StringArrayHashMapUnmanaged(FontFace),
         font_pages: std.ArrayListUnmanaged(FontPage),
 
-        const GlyphLocation = struct {
+        const GlyphInfo = struct {
             page_idx: u32,
             top: f32,
             left: f32,
@@ -31,7 +31,7 @@ pub fn FontManager(comptime TextureContext: type) type {
         const FontFace = struct {
             face: freetype.Face,
             hb_font: harfbuzz.Font,
-            glyphs: std.ArrayHashMapUnmanaged(GlyphKey, GlyphLocation, GlyphKey.Comparator, false),
+            glyphs: std.ArrayHashMapUnmanaged(GlyphKey, GlyphInfo, GlyphKey.Comparator, false),
 
             const GlyphKey = struct {
                 glyph_idx: u32,
@@ -259,18 +259,18 @@ pub fn FontManager(comptime TextureContext: type) type {
             };
         }
 
-        const GlyphPos = struct {
+        const GlyphLocation = struct {
             page_idx: u32,
             x: u32,
             y: u32,
         };
 
-        fn reserveSpaceForGlyph(self: *Self, width: u32, height: u32) !GlyphPos {
+        fn reserveSpaceForGlyph(self: *Self, width: u32, height: u32) !GlyphLocation {
             if (self.font_pages.items.len > 0) {
                 // look for free space in the last page
                 const page = &self.font_pages.items[self.font_pages.items.len - 1];
                 if (page.reserveNode(width, height)) |pos| {
-                    return GlyphPos{
+                    return GlyphLocation{
                         .page_idx = @intCast(u32, self.font_pages.items.len - 1),
                         .x = pos[0],
                         .y = pos[1],
@@ -327,14 +327,14 @@ pub fn FontManager(comptime TextureContext: type) type {
             );
             try self.font_pages.append(self.allocator, page);
 
-            return GlyphPos{
+            return GlyphLocation{
                 .page_idx = @intCast(u32, self.font_pages.items.len - 1),
                 .x = pos[0],
                 .y = pos[1],
             };
         }
 
-        fn getFontGlyph(self: *Self, font_face: *FontFace, glyph_idx: u32, size: u32, dpi: ?u16) !GlyphLocation {
+        fn getFontGlyph(self: *Self, font_face: *FontFace, glyph_idx: u32, size: u32, dpi: ?u16) !GlyphInfo {
             const glyph = try font_face.glyphs.getOrPut(self.allocator, .{
                 .glyph_idx = glyph_idx,
                 .size = size,
@@ -346,15 +346,15 @@ pub fn FontManager(comptime TextureContext: type) type {
                 const bitmap = font_face.face.glyph().bitmap();
 
                 // We want a 1px border around each glyph so that blending doesn't break everything
-                const glyph_pos = try self.reserveSpaceForGlyph(bitmap.width() + 1, bitmap.rows() + 1);
-                const page = self.font_pages.items[glyph_pos.page_idx];
+                const glyph_loc = try self.reserveSpaceForGlyph(bitmap.width() + 1, bitmap.rows() + 1);
+                const page = self.font_pages.items[glyph_loc.page_idx];
 
                 var y: u32 = 0;
                 while (y < bitmap.rows()) : (y += 1) {
-                    const ty = y + glyph_pos.y;
+                    const ty = y + glyph_loc.y;
                     var x: u32 = 0;
                     while (x < bitmap.width()) : (x += 1) {
-                        const tx = x + glyph_pos.x;
+                        const tx = x + glyph_loc.x;
 
                         const i = ty * page.width + tx;
                         const j = y * bitmap.width() + x;
@@ -367,23 +367,23 @@ pub fn FontManager(comptime TextureContext: type) type {
                 }
 
                 try self.texture_context.updateTexture(
-                    glyph_pos.page_idx,
-                    glyph_pos.x,
-                    glyph_pos.y,
+                    glyph_loc.page_idx,
+                    glyph_loc.x,
+                    glyph_loc.y,
                     bitmap.width(),
                     bitmap.rows(),
                     @as([]const u8, page.tex_data),
                 );
 
-                const top = glyph_pos.y;
-                const left = glyph_pos.x;
-                const bottom = glyph_pos.y + bitmap.rows();
-                const right = glyph_pos.x + bitmap.width();
+                const top = glyph_loc.y;
+                const left = glyph_loc.x;
+                const bottom = glyph_loc.y + bitmap.rows();
+                const right = glyph_loc.x + bitmap.width();
 
                 const metrics = font_face.face.glyph().metrics();
 
                 glyph.value_ptr.* = .{
-                    .page_idx = glyph_pos.page_idx,
+                    .page_idx = glyph_loc.page_idx,
                     .top = @intToFloat(f32, top) / @intToFloat(f32, page.height),
                     .left = @intToFloat(f32, left) / @intToFloat(f32, page.width),
                     .bottom = @intToFloat(f32, bottom) / @intToFloat(f32, page.height),
@@ -396,7 +396,7 @@ pub fn FontManager(comptime TextureContext: type) type {
             return glyph.value_ptr.*;
         }
 
-        pub const GlyphInfo = struct {
+        pub const GlyphRenderInfo = struct {
             render: struct {
                 texture: RenderTexture,
                 top: f32,
@@ -428,33 +428,36 @@ pub fn FontManager(comptime TextureContext: type) type {
                 self.buf.deinit();
             }
 
-            pub fn next(self: *GlyphIterator) !?GlyphInfo {
+            pub fn next(self: *GlyphIterator) !?GlyphRenderInfo {
                 if (self.next_idx == self.infos.len) {
                     return null;
                 }
 
-                const info = self.infos[self.next_idx];
                 const pos = self.positions[self.next_idx];
+                const info = try self.manager.getFontGlyph(
+                    self.font_face,
+                    self.infos[self.next_idx].codepoint, // despite the name this is the glyph index
+                    self.size,
+                    self.dpi,
+                );
 
                 self.next_idx += 1;
 
-                const location = try self.manager.getFontGlyph(self.font_face, info.codepoint, self.size, self.dpi);
-
-                return GlyphInfo{
+                return GlyphRenderInfo{
                     .render = .{
-                        .texture = self.manager.texture_context.getRenderTexture(location.page_idx),
-                        .top = location.top,
-                        .left = location.left,
-                        .bottom = location.bottom,
-                        .right = location.right,
+                        .texture = self.manager.texture_context.getRenderTexture(info.page_idx),
+                        .top = info.top,
+                        .left = info.left,
+                        .bottom = info.bottom,
+                        .right = info.right,
                     },
                     .layout = .{
                         .x_advance = pos.x_advance,
                         .y_advance = pos.y_advance,
                         .x_offset = pos.x_offset,
                         .y_offset = pos.y_offset,
-                        .width = location.layout_width,
-                        .height = location.layout_height,
+                        .width = info.layout_width,
+                        .height = info.layout_height,
                     },
                 };
             }
