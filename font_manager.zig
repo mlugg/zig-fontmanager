@@ -525,6 +525,9 @@ pub fn FontManager(comptime TextureContext: type) type {
             buf.addUTF8(str, 0, null);
             buf.guessSegmentProps();
 
+            try font_face.face.setCharSize(@intCast(i32, size), 0, dpi orelse 0, dpi orelse 0);
+            font_face.hb_font.freetypeFaceChanged();
+
             font_face.hb_font.shape(buf, null);
 
             return GlyphIterator{
