@@ -42,8 +42,12 @@ pub fn FontManager(comptime TextureContext: type) type {
             left: f32,
             bottom: f32,
             right: f32,
-            layout_width: u32,
-            layout_height: u32,
+            layout: struct {
+                width: u32,
+                height: u32,
+                bearing_x: i32,
+                bearing_y: i32,
+            },
         };
 
         const FontFace = struct {
@@ -407,8 +411,12 @@ pub fn FontManager(comptime TextureContext: type) type {
                     .left = @intToFloat(f32, left) / @intToFloat(f32, page.width),
                     .bottom = @intToFloat(f32, bottom) / @intToFloat(f32, page.height),
                     .right = @intToFloat(f32, right) / @intToFloat(f32, page.width),
-                    .layout_width = @intCast(u32, metrics.width),
-                    .layout_height = @intCast(u32, metrics.height),
+                    .layout = .{
+                        .width = @intCast(u32, metrics.width),
+                        .height = @intCast(u32, metrics.height),
+                        .bearing_x = metrics.horiBearingX,
+                        .bearing_y = metrics.horiBearingY,
+                    },
                 };
             }
 
@@ -507,10 +515,10 @@ pub fn FontManager(comptime TextureContext: type) type {
                     .layout = .{
                         .x_advance = pos.x_advance,
                         .y_advance = pos.y_advance,
-                        .x_offset = pos.x_offset,
-                        .y_offset = pos.y_offset,
-                        .width = info.layout_width,
-                        .height = info.layout_height,
+                        .x_offset = info.layout.bearing_x + pos.x_offset,
+                        .y_offset = info.layout.bearing_y + pos.y_offset,
+                        .width = info.layout.width,
+                        .height = info.layout.height,
                     },
                 };
             }
