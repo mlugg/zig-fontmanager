@@ -465,8 +465,7 @@ pub fn FontManager(comptime TextureContext: type) type {
                 right: f32,
             },
             layout: struct {
-                x_advance: i32,
-                y_advance: i32,
+                advance: i32,
                 x_offset: i32,
                 y_offset: i32,
                 width: u32,
@@ -487,6 +486,10 @@ pub fn FontManager(comptime TextureContext: type) type {
             pub fn deinit(self: *GlyphIterator) void {
                 self.buf.deinit();
                 self.manager.checkClearPages();
+            }
+
+            pub fn numGlyphs(self: GlyphIterator) usize {
+                return self.infos.len;
             }
 
             pub fn next(self: *GlyphIterator) !?GlyphRenderInfo {
@@ -513,8 +516,7 @@ pub fn FontManager(comptime TextureContext: type) type {
                         .right = info.right,
                     },
                     .layout = .{
-                        .x_advance = pos.x_advance,
-                        .y_advance = pos.y_advance,
+                        .advance = pos.x_advance,
                         .x_offset = info.layout.bearing_x + pos.x_offset,
                         .y_offset = info.layout.bearing_y + pos.y_offset,
                         .width = info.layout.width,
@@ -547,6 +549,23 @@ pub fn FontManager(comptime TextureContext: type) type {
                 .size = size,
                 .dpi = dpi,
                 .next_idx = 0,
+            };
+        }
+
+        pub const SizeInfo = struct {
+            ascender: u32,
+            descender: u32,
+            line_height: u32,
+        };
+
+        pub fn sizeInfo(self: *Self, face_name: []const u8, size: u32, dpi: ?u16) !SizeInfo {
+            const font_face = self.font_faces.getPtr(face_name) orelse return error.NoSuchFace;
+            try font_face.face.setCharSize(@intCast(i32, size), 0, dpi orelse 0, dpi orelse 0);
+
+            return SizeInfo{
+                .ascender = font_face.face.ascender(),
+                .descender = font_face.face.descender(),
+                .line_height = font_face.face.height(),
             };
         }
     };
