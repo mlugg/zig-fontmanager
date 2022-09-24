@@ -1,14 +1,11 @@
 const std = @import("std");
-const freetype = @import("mach-freetype/build.zig");
 
-pub const pkg = std.build.Pkg{
-    .name = "fontmanager",
-    .source = .{ .path = thisDir() ++ "/font_manager.zig" },
-    .dependencies = &.{ freetype.pkg, freetype.harfbuzz_pkg },
-};
-
-pub fn link(b: *std.build.Builder, step: *std.build.LibExeObjStep) void {
-    freetype.link(b, step, .{ .harfbuzz = .{} });
+pub fn pkg(comptime freetype: anytype) std.build.Pkg {
+    return .{
+        .name = "fontmanager",
+        .source = .{ .path = comptime thisDir() ++ "/font_manager.zig" },
+        .dependencies = &.{ freetype.pkg, freetype.harfbuzz_pkg },
+    };
 }
 
 fn thisDir() []const u8 {
