@@ -553,9 +553,9 @@ pub fn FontManager(comptime TextureContext: type) type {
         }
 
         pub const SizeInfo = struct {
-            ascender: u32,
-            descender: u32,
-            line_height: u32,
+            ascender: i16,
+            descender: i16,
+            line_height: u16,
         };
 
         pub fn sizeInfo(self: *Self, face_name: []const u8, size: u32, dpi: ?u16) !SizeInfo {
@@ -565,7 +565,7 @@ pub fn FontManager(comptime TextureContext: type) type {
             return SizeInfo{
                 .ascender = font_face.face.ascender(),
                 .descender = font_face.face.descender(),
-                .line_height = font_face.face.height(),
+                .line_height = @intCast(u16, font_face.face.height()),
             };
         }
     };
