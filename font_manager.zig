@@ -281,6 +281,10 @@ pub fn FontManager(comptime TextureContext: type) type {
             };
         }
 
+        pub fn hasFont(self: *Self, name: []const u8) bool {
+            return self.font_faces.contains(name);
+        }
+
         const GlyphLocation = struct {
             page_idx: u32,
             x: u32,
