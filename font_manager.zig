@@ -260,6 +260,9 @@ pub fn FontManager(comptime TextureContext: type) type {
                 font_face.face.deinit();
                 font_face.glyphs.deinit(self.allocator);
             }
+            for (self.font_faces.keys()) |name| {
+                self.allocator.free(name);
+            }
             self.font_faces.deinit(self.allocator);
 
             self.ft_lib.deinit();
@@ -273,6 +276,10 @@ pub fn FontManager(comptime TextureContext: type) type {
             if (result.found_existing) {
                 return error.FontAlreadyExists;
             }
+
+            errdefer _ = self.font_faces.orderedRemove(name);
+
+            result.key_ptr.* = try self.allocator.dupe(u8, name);
 
             result.value_ptr.* = .{
                 .face = face,
