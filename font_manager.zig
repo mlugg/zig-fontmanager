@@ -425,8 +425,8 @@ pub fn FontManager(comptime TextureContext: type) type {
                     .layout = .{
                         .width = @intCast(u32, metrics.width),
                         .height = @intCast(u32, metrics.height),
-                        .bearing_x = metrics.horiBearingX,
-                        .bearing_y = metrics.horiBearingY,
+                        .bearing_x = @intCast(i32, metrics.horiBearingX),
+                        .bearing_y = @intCast(i32, metrics.horiBearingY),
                     },
                 };
             }
