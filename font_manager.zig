@@ -33,7 +33,7 @@ pub fn FontManager(comptime TextureContext: type) type {
         config: Config,
 
         ft_lib: freetype.Library,
-        font_faces: std.StringArrayHashMapUnmanaged(FontFace),
+        font_faces: std.ArrayListUnmanaged(FontFace),
         font_pages: std.ArrayListUnmanaged(FontPage),
 
         const GlyphInfo = struct {
@@ -248,48 +248,36 @@ pub fn FontManager(comptime TextureContext: type) type {
         }
 
         pub fn deinit(self: *Self) void {
-            for (self.font_pages.items) |*font_page, i| {
-                self.texture_context.destroyTexture(@intCast(u32, i));
+            for (self.font_pages.items, 0..) |*font_page, i| {
+                self.texture_context.destroyTexture(@intCast(i));
                 self.allocator.free(font_page.tex_data);
                 font_page.arena.deinit();
             }
             self.font_pages.deinit(self.allocator);
 
-            for (self.font_faces.values()) |*font_face| {
+            for (self.font_faces.items) |*font_face| {
                 font_face.hb_font.deinit();
                 font_face.face.deinit();
                 font_face.glyphs.deinit(self.allocator);
-            }
-            for (self.font_faces.keys()) |name| {
-                self.allocator.free(name);
             }
             self.font_faces.deinit(self.allocator);
 
             self.ft_lib.deinit();
         }
 
-        pub fn registerFont(self: *Self, name: []const u8, path: []const u8, face_idx: i32) !void {
-            const face = try self.ft_lib.createFace(path, face_idx);
+        pub const FontId = enum(usize) { _ };
+
+        pub fn registerFont(self: *Self, path: [:0]const u8, font_idx: i32) !FontId {
+            const face = try self.ft_lib.createFace(path.ptr, font_idx);
             errdefer face.deinit();
 
-            const result = try self.font_faces.getOrPut(self.allocator, name);
-            if (result.found_existing) {
-                return error.FontAlreadyExists;
-            }
-
-            errdefer _ = self.font_faces.orderedRemove(name);
-
-            result.key_ptr.* = try self.allocator.dupe(u8, name);
-
-            result.value_ptr.* = .{
+            const id: FontId = @enumFromInt(self.font_faces.items.len);
+            try self.font_faces.append(self.allocator, .{
                 .face = face,
                 .hb_font = harfbuzz.Font.fromFreetypeFace(face),
                 .glyphs = .{},
-            };
-        }
-
-        pub fn hasFont(self: *Self, name: []const u8) bool {
-            return self.font_faces.contains(name);
+            });
+            return id;
         }
 
         const GlyphLocation = struct {
@@ -303,8 +291,8 @@ pub fn FontManager(comptime TextureContext: type) type {
                 // look for free space in the last page
                 const page = &self.font_pages.items[self.font_pages.items.len - 1];
                 if (page.reserveNode(width, height)) |pos| {
-                    return GlyphLocation{
-                        .page_idx = @intCast(u32, self.font_pages.items.len - 1),
+                    return .{
+                        .page_idx = @intCast(self.font_pages.items.len - 1),
                         .x = pos[0],
                         .y = pos[1],
                     };
@@ -354,15 +342,15 @@ pub fn FontManager(comptime TextureContext: type) type {
             };
 
             try self.texture_context.createTexture(
-                @intCast(u32, self.font_pages.items.len),
+                @intCast(self.font_pages.items.len),
                 page.width,
                 page.height,
                 @as([]const u8, page.tex_data),
             );
             try self.font_pages.append(self.allocator, page);
 
-            return GlyphLocation{
-                .page_idx = @intCast(u32, self.font_pages.items.len - 1),
+            return .{
+                .page_idx = @intCast(self.font_pages.items.len - 1),
                 .x = pos[0],
                 .y = pos[1],
             };
@@ -375,7 +363,7 @@ pub fn FontManager(comptime TextureContext: type) type {
             });
 
             if (!glyph.found_existing) {
-                try font_face.face.setCharSize(@intCast(i32, size), 0, dpi orelse 0, dpi orelse 0);
+                try font_face.face.setCharSize(@intCast(size), 0, dpi orelse 0, dpi orelse 0);
                 try font_face.face.loadGlyph(glyph_idx, .{ .render = true });
                 const bitmap = font_face.face.glyph().bitmap();
 
@@ -418,15 +406,15 @@ pub fn FontManager(comptime TextureContext: type) type {
 
                 glyph.value_ptr.* = .{
                     .page_idx = glyph_loc.page_idx,
-                    .top = @intToFloat(f32, top) / @intToFloat(f32, page.height),
-                    .left = @intToFloat(f32, left) / @intToFloat(f32, page.width),
-                    .bottom = @intToFloat(f32, bottom) / @intToFloat(f32, page.height),
-                    .right = @intToFloat(f32, right) / @intToFloat(f32, page.width),
+                    .top = @as(f32, @floatFromInt(top)) / @as(f32, @floatFromInt(page.height)),
+                    .left = @as(f32, @floatFromInt(left)) / @as(f32, @floatFromInt(page.width)),
+                    .bottom = @as(f32, @floatFromInt(bottom)) / @as(f32, @floatFromInt(page.height)),
+                    .right = @as(f32, @floatFromInt(right)) / @as(f32, @floatFromInt(page.width)),
                     .layout = .{
-                        .width = @intCast(u32, metrics.width),
-                        .height = @intCast(u32, metrics.height),
-                        .bearing_x = @intCast(i32, metrics.horiBearingX),
-                        .bearing_y = @intCast(i32, metrics.horiBearingY),
+                        .width = @intCast(metrics.width),
+                        .height = @intCast(metrics.height),
+                        .bearing_x = @intCast(metrics.horiBearingX),
+                        .bearing_y = @intCast(metrics.horiBearingY),
                     },
                 };
             }
@@ -439,8 +427,8 @@ pub fn FontManager(comptime TextureContext: type) type {
                 return;
             }
 
-            for (self.font_pages.items[1..]) |*font_page, i| {
-                self.texture_context.destroyTexture(@intCast(u32, i + 1));
+            for (self.font_pages.items[1..], 0..) |*font_page, i| {
+                self.texture_context.destroyTexture(@intCast(i + 1));
                 self.allocator.free(font_page.tex_data);
                 font_page.arena.deinit();
             }
@@ -537,8 +525,8 @@ pub fn FontManager(comptime TextureContext: type) type {
             }
         };
 
-        pub fn glyphIterator(self: *Self, face_name: []const u8, size: u32, dpi: ?u16, str: []const u8) !GlyphIterator {
-            const font_face = self.font_faces.getPtr(face_name) orelse return error.NoSuchFace;
+        pub fn glyphIterator(self: *Self, font_id: FontId, size: u32, dpi: ?u16, str: []const u8) !GlyphIterator {
+            const font_face = &self.font_faces.items[@intFromEnum(font_id)];
 
             const buf = harfbuzz.Buffer.init() orelse return error.BufferInitError;
             errdefer buf.deinit();
@@ -546,7 +534,7 @@ pub fn FontManager(comptime TextureContext: type) type {
             buf.addUTF8(str, 0, null);
             buf.guessSegmentProps();
 
-            try font_face.face.setCharSize(@intCast(i32, size), 0, dpi orelse 0, dpi orelse 0);
+            try font_face.face.setCharSize(@intCast(size), 0, dpi orelse 0, dpi orelse 0);
             font_face.hb_font.freetypeFaceChanged();
 
             font_face.hb_font.shape(buf, null);
@@ -569,14 +557,14 @@ pub fn FontManager(comptime TextureContext: type) type {
             line_height: u32,
         };
 
-        pub fn sizeInfo(self: *Self, face_name: []const u8, size: u32, dpi: ?u16) !SizeInfo {
-            const font_face = self.font_faces.getPtr(face_name) orelse return error.NoSuchFace;
-            try font_face.face.setCharSize(@intCast(i32, size), 0, dpi orelse 0, dpi orelse 0);
+        pub fn sizeInfo(self: *Self, font_id: FontId, size: u32, dpi: ?u16) !SizeInfo {
+            const font_face = self.font_faces.items[@intFromEnum(font_id)];
+            try font_face.face.setCharSize(@intCast(size), 0, dpi orelse 0, dpi orelse 0);
 
-            return SizeInfo{
-                .ascender = @intCast(i32, font_face.face.size().metrics().ascender),
-                .descender = @intCast(i32, font_face.face.size().metrics().descender),
-                .line_height = @intCast(u32, font_face.face.size().metrics().height),
+            return .{
+                .ascender = @intCast(font_face.face.size().metrics().ascender),
+                .descender = @intCast(font_face.face.size().metrics().descender),
+                .line_height = @intCast(font_face.face.size().metrics().height),
             };
         }
     };
