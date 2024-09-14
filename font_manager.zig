@@ -23,10 +23,10 @@ pub fn FontManager(comptime TextureContext: type) type {
     return struct {
         const Self = @This();
 
-        const RenderTexture = if (std.meta.trait.is(.Pointer)(TextureContext))
-            std.meta.Child(TextureContext).RenderTexture
-        else
-            TextureContext.RenderTexture;
+        const RenderTexture = switch (@typeInfo(TextureContext)) {
+            .pointer => |ptr| ptr.child.RenderTexture,
+            else => TextureContext.RenderTexture,
+        };
 
         allocator: std.mem.Allocator,
         texture_context: TextureContext,
@@ -82,11 +82,11 @@ pub fn FontManager(comptime TextureContext: type) type {
                 free,
                 occupied,
                 branch_x: struct {
-                    children: [*]BspNode, //*[2]BspNode, TODO: https://github.com/ziglang/zig/issues/12325
+                    children: *[2]BspNode,
                     left_px: u32,
                 },
                 branch_y: struct {
-                    children: [*]BspNode, //*[2]BspNode, TODO: https://github.com/ziglang/zig/issues/12325
+                    children: *[2]BspNode,
                     top_px: u32,
                 },
 
@@ -237,7 +237,7 @@ pub fn FontManager(comptime TextureContext: type) type {
             const ft_lib = try freetype.Library.init();
             errdefer ft_lib.deinit();
 
-            return Self{
+            return .{
                 .allocator = allocator,
                 .texture_context = texture_context,
                 .config = config,
@@ -477,7 +477,7 @@ pub fn FontManager(comptime TextureContext: type) type {
             buf: harfbuzz.Buffer,
             font_face: *FontFace,
             infos: []harfbuzz.GlyphInfo,
-            positions: []harfbuzz.Position,
+            positions: []harfbuzz.GlyphPosition,
             size: u32,
             dpi: ?u16,
             next_idx: u32,
@@ -506,7 +506,7 @@ pub fn FontManager(comptime TextureContext: type) type {
 
                 self.next_idx += 1;
 
-                return GlyphRenderInfo{
+                return .{
                     .render = .{
                         .texture = self.manager.texture_context.getRenderTexture(info.page_idx),
                         .top = info.top,
@@ -539,7 +539,7 @@ pub fn FontManager(comptime TextureContext: type) type {
 
             font_face.hb_font.shape(buf, null);
 
-            return GlyphIterator{
+            return .{
                 .manager = self,
                 .buf = buf,
                 .font_face = font_face,

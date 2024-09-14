@@ -1,15 +1,12 @@
-const std = @import("std");
-
-pub fn module(b: *std.Build, comptime freetype: anytype) *std.Build.Module {
-    return b.createModule(.{
-        .source_file = .{ .path = comptime thisDir() ++ "/font_manager.zig" },
-        .dependencies = &.{
-            .{ .name = "freetype", .module = freetype.module(b) },
-            .{ .name = "harfbuzz", .module = freetype.harfbuzzModule(b) },
+pub fn build(b: *std.Build) void {
+    const ft = b.dependency("mach-freetype", .{});
+    _ = b.addModule("fontmanager", .{
+        .root_source_file = b.path("font_manager.zig"),
+        .imports = &.{
+            .{ .name = "freetype", .module = ft.module("mach-freetype") },
+            .{ .name = "harfbuzz", .module = ft.module("mach-harfbuzz") },
         },
     });
 }
 
-fn thisDir() []const u8 {
-    return std.fs.path.dirname(@src().file) orelse ".";
-}
+const std = @import("std");

@@ -1,0 +1,15 @@
+.{
+    .name = "fontmanager",
+    .version = "0.1.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "font_manager.zig",
+    },
+    .dependencies = .{
+        .@"mach-freetype" = .{
+            .url = "https://pkg.machengine.org/mach-freetype/86fc8024d4ddd53df75dfa4f3ad4eebe0b1b4284.tar.gz",
+            .hash = "12206251ed342f400b80abf3c338521f5d8c83eb596899abf77a2afe0cfd46e61ff0",
+        },
+    },
+}
